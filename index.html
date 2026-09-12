@@ -2984,12 +2984,14 @@ function buildPlan(optMaxH, optProfile){
      If the person pulled time away from a task today (the
      "−" control, because the rotation picked something they
      don't want right now), that task stays capped at its
-     reduced amount — but the freed time is NOT lost. It goes
-     right back through the same seating logic, minus the
-     reduced task itself. */
+     reduced amount — and the freed time is simply LOST for
+     today, not handed to another task. This is deliberate:
+     minus a task all the way down and it disappears from the
+     day for good, instead of the day silently refilling itself
+     with something else. Click minus on everything but one
+     task and today's plan really is just that one task. */
   const reduceMap = S.reduceTime || {};
   const reducedIds = new Set();
-  let freed = 0;
   for(const idStr in reduceMap){
     const id = Number(idStr);
     const cut = reduceMap[idStr];
@@ -3003,10 +3005,8 @@ function buildPlan(optMaxH, optProfile){
       if(t){ if(t.kind==='deep') nDeep = Math.max(0,nDeep-1);
              else if(t.kind==='drip') nDrip = Math.max(0,nDrip-1); }
     }
-    freed += actualCut;
     used = Math.max(0, used - actualCut);
   }
-  if(freed > 1e-6) topUp(reducedIds);
 
   let plan  = order
     .filter(t => (alloc[t.r.id]||0) > (t.kind==='micro' ? 1e-6 : QUANTUM - 1e-9))
@@ -4813,10 +4813,11 @@ function addExtra(e, id) {
   renderPlanLines();
 }
 
-/* Minus 15 min from a task's algorithmic share today — the plan's
-   total workload doesn't shrink: buildPlan() hands the freed time
-   right back to the next best-fit task via the same scoring pass.
-   Useful when the rotation picked a subject you don't want right now. */
+/* Minus 15 min from a task's algorithmic share today. The freed
+   time is NOT handed to another task — it just shrinks today's
+   plan. Click it enough times on a task and that task disappears
+   for the day; do that to everything but one task and today's
+   plan is just that one task. */
 function minusTime(e, id) {
   e.stopPropagation();
   if(!S.reduceTime) S.reduceTime = {};
