@@ -218,6 +218,24 @@ input, select { font-family:'Scheherazade New','Amiri',serif; }
   border-color:rgba(255,255,255,.25);
   background:rgba(255,255,255,.05);
 }
+.grind-btn {
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:8px; padding:3px 8px;
+  font-size:14px; cursor:pointer;
+  transition:all .2s; line-height:1;
+  opacity:.5; color:rgba(237,228,200,.7);
+}
+.grind-btn:hover { opacity:.85; background:rgba(255,255,255,.12); }
+.grind-btn.active {
+  opacity:1; border-color:rgba(200,165,80,.55);
+  background:rgba(200,165,80,.12); color:#F2E4B8;
+  animation:grindPulse 2.4s ease-in-out infinite;
+}
+@keyframes grindPulse {
+  0%,100% { box-shadow:0 0 0 rgba(200,165,80,0); }
+  50% { box-shadow:0 0 10px rgba(200,165,80,.35); }
+}
 
 /* Task rows — manuscript lines */
 .task-lines { display:flex; flex-direction:column; gap:0; }
@@ -1555,6 +1573,7 @@ input, select { font-family:'Scheherazade New','Amiri',serif; }
         <div style="display:flex;gap:6px;align-items:center;">
           <button class="loc-pill" id="pill-dubai"    onclick="setLoc('dubai')"   title="دبي">🇦🇪</button>
           <button class="loc-pill" id="pill-istanbul" onclick="setLoc('istanbul')" title="إسطنبول">🇹🇷</button>
+          <button class="grind-btn" id="grind-btn" onclick="openGrindModal()" title="وضع المذاكرة المكثّف">⚡</button>
           <button class="psh-resp-btn" onclick="showPage('resp')">المسؤوليات ←</button>
         </div>
       </div>
@@ -1808,6 +1827,7 @@ let S = {
   extraTime:{},
   reduceTime:{},
   nextId:13,
+  grind:{active:false, until:null, weekday:4, weekend:14},
   responsibilities:[
     {id:6, name:'ICSC — مسابقة علوم الحاسوب الدولية',      cat:'competitions', hours:10,   deadline:'2026-07-06', doneH:0, priority:'high'},
     {id:7, name:'HG Wells — قصة قصيرة (The Cheat)',         cat:'competitions', hours:12,   deadline:'2026-07-07', doneH:0, priority:'high'},
@@ -2192,11 +2212,68 @@ if((S.migration||0) < 14){
      + 40-min free period on Thu, Fri, Mon, Tue
 ════════════════════════════════════════════════════ */
 const CAPACITY_RULE = { weekday:3.5, weekend:9, freeDays:[4,5,1,2], freeH:40/60 };
+function isoOfDate(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+/* Grind mode — a one-off, self-expiring capacity boost for exam
+   crunches. While S.grind.active and today <= S.grind.until, the
+   weekday/weekend hours below override CAPACITY_RULE; the day after
+   `until`, checkGrindExpiry() switches it back off automatically. */
 function dayCapacity(d){
   const wd = d.getDay();
-  let h = (wd===6 || wd===0) ? CAPACITY_RULE.weekend : CAPACITY_RULE.weekday;
+  const g = S.grind;
+  const boosted = !!(g && g.active && g.until && isoOfDate(d) <= g.until);
+  const weekdayH = boosted ? g.weekday : CAPACITY_RULE.weekday;
+  const weekendH = boosted ? g.weekend : CAPACITY_RULE.weekend;
+  let h = (wd===6 || wd===0) ? weekendH : weekdayH;
   if(CAPACITY_RULE.freeDays.indexOf(wd)!==-1) h += CAPACITY_RULE.freeH;
   return h;
+}
+function checkGrindExpiry(){
+  if(S.grind && S.grind.active && S.grind.until && todayISO() > S.grind.until){
+    S.grind.active = false;
+    saveS();
+  }
+}
+function openGrindModal(){
+  document.getElementById('grind-until').value = (S.grind && S.grind.until) || '';
+  document.getElementById('grind-weekday').value = (S.grind && S.grind.weekday) || 4;
+  document.getElementById('grind-weekend').value = (S.grind && S.grind.weekend) || 14;
+  document.getElementById('grind-end-row').style.display = (S.grind && S.grind.active) ? 'flex' : 'none';
+  document.getElementById('grind-overlay').classList.add('open');
+}
+function closeGrindModal(){
+  document.getElementById('grind-overlay').classList.remove('open');
+}
+function startGrindMode(){
+  const until = document.getElementById('grind-until').value;
+  const weekday = parseFloat(document.getElementById('grind-weekday').value);
+  const weekend = parseFloat(document.getElementById('grind-weekend').value);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(until) || until < todayISO()) return;
+  S.grind = { active:true, until, weekday: isNaN(weekday)?4:weekday, weekend: isNaN(weekend)?14:weekend };
+  saveS();
+  closeGrindModal();
+  refreshGrindUI();
+}
+function endGrindMode(){
+  if(!S.grind) return;
+  S.grind.active = false;
+  saveS();
+  closeGrindModal();
+  refreshGrindUI();
+}
+function refreshGrindUI(){
+  renderGrindBadge();
+  renderPlanLines();
+  renderWeekPlanPanel();
+  renderForecast();
+}
+function renderGrindBadge(){
+  const btn = document.getElementById('grind-btn');
+  if(!btn) return;
+  const active = !!(S.grind && S.grind.active);
+  btn.classList.toggle('active', active);
+  btn.title = active ? ('وضع مكثّف حتى ' + S.grind.until) : 'وضع المذاكرة المكثّف — رفع الطاقة مؤقتًا';
 }
 /* total hours available from today through the next (days-1) days */
 function cumCapacity(days){
@@ -2337,6 +2414,32 @@ if((S.migration||0) < 15){
   if(!Array.isArray(S.exams)) S.exams = [];
   S.nextExamId = Math.max(S.nextExamId || 0, 1);
   S.migration = 15;
+  saveS();
+}
+
+/* One-time migration (v16) — Sep 12 2026:
+   Physics retrieval assessment landed with two days' notice —
+   Monday 2026-09-14. Same priority as the أحياء retrieval prep
+   (medium). Grind mode switched on through the exam (weekday
+   3.5→4h, weekend 9→14h); it turns itself off automatically
+   the day after, via checkGrindExpiry() at boot. */
+if((S.migration||0) < 16){
+  if(!Array.isArray(S.assessments)) S.assessments = [];
+  if(!S.assessments.some(a => a.date==='2026-09-14' && a.subject==='فيزياء')){
+    S.assessments.push({ id:S.nextAssessId||2, subject:'فيزياء', date:'2026-09-14', marks:null, notes:'استرجاع' });
+  }
+  S.nextAssessId = Math.max(S.nextAssessId || 0, 3);
+  if(!S.examDates) S.examDates = [];
+  if(S.examDates.indexOf('2026-09-14')===-1) S.examDates.push('2026-09-14');
+  if(!S.responsibilities.some(r=>r.id===152)){
+    S.responsibilities.push({
+      id:152, name:'فيزياء — مراجعة الاسترجاع (الاثنين)',
+      cat:'school', hours:4, deadline:'2026-09-14', doneH:0, priority:'medium'
+    });
+  }
+  S.nextId = Math.max(S.nextId || 0, 153);
+  S.grind = { active:true, until:'2026-09-14', weekday:4, weekend:14 };
+  S.migration = 16;
   saveS();
 }
 
@@ -5927,12 +6030,15 @@ document.addEventListener('keydown', e => {
   if(document.getElementById('echo-overlay').classList.contains('open')) skipEcho();
   if(document.getElementById('dive-capture-overlay').classList.contains('open')) closeDiveCapture();
   if(document.getElementById('dive-resolve-overlay').classList.contains('open')) closeDiveResolve();
+  if(document.getElementById('grind-overlay').classList.contains('open')) closeGrindModal();
 });
 
 
 /* ════════════════════════════════════════════════════
    BOOT
 ════════════════════════════════════════════════════ */
+checkGrindExpiry();
+renderGrindBadge();
 updateClock();
 setInterval(updateClock,10000);
 updateFridayFeatures();
@@ -6059,6 +6165,29 @@ updateDiveBtn();
     <div class="mini-label">بدّلي مهمة اليوم</div>
     <div class="mini-sub">اختاري مسؤولية أخرى لتحلّ محلّها اليوم فقط</div>
     <div id="swap-picker-body"></div>
+  </div>
+</div>
+
+<!-- Grind-mode modal — one-off, self-expiring capacity boost for exam crunches -->
+<div class="mini-overlay" id="grind-overlay" onclick="if(event.target===this)closeGrindModal()">
+  <div class="mini-modal" onclick="event.stopPropagation()">
+    <div class="mini-label">وضع المذاكرة المكثّف</div>
+    <div class="mini-title">رفع السقف اليومي مؤقتًا</div>
+    <div class="mini-sub">يبقى الرفع ساريًا حتى التاريخ الذي تحدّدينه، ثم يعود تلقائيًا لوضعه الطبيعي — لا حاجة لتذكّر إيقافه.</div>
+    <div class="mini-custom-row">
+      <input type="date" class="mini-input" id="grind-until">
+    </div>
+    <div class="mini-custom-row">
+      <input type="number" class="mini-input" id="grind-weekday" placeholder="ساعات أيام الدراسة" step="0.5" min="0">
+      <input type="number" class="mini-input" id="grind-weekend" placeholder="ساعات نهاية الأسبوع" step="0.5" min="0">
+    </div>
+    <div class="mini-btn-row">
+      <button class="mini-btn primary" onclick="startGrindMode()">تفعيل</button>
+      <button class="mini-btn" onclick="closeGrindModal()">إغلاق</button>
+    </div>
+    <div class="mini-btn-row" id="grind-end-row" style="display:none;margin-top:10px;">
+      <button class="mini-btn" onclick="endGrindMode()">إنهاء الوضع المكثّف الآن</button>
+    </div>
   </div>
 </div>
 
