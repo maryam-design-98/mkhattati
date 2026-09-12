@@ -1,7 +1,7 @@
 /* مخططي — service worker
    Caches the app shell so it opens instantly and works offline.
    Bump CACHE_NAME whenever index.html changes to push the update. */
-const CACHE_NAME = 'mokhattati-v1';
+const CACHE_NAME = 'mokhattati-v3';
 const APP_SHELL = [
   './index.html',
   './manifest.json',
