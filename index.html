@@ -232,6 +232,15 @@ input, select { font-family:'Scheherazade New','Amiri',serif; }
   background:rgba(200,165,80,.12); color:#F2E4B8;
   animation:grindPulse 2.4s ease-in-out infinite;
 }
+.psh-add-btn {
+  background:rgba(200,165,80,.1);
+  border:1px solid rgba(200,165,80,.35);
+  border-radius:8px; padding:3px 11px;
+  font-size:15px; line-height:1; cursor:pointer;
+  color:#F2E4B8; opacity:.75;
+  transition:all .2s;
+}
+.psh-add-btn:hover { opacity:1; background:rgba(200,165,80,.2); border-color:rgba(200,165,80,.55); }
 @keyframes grindPulse {
   0%,100% { box-shadow:0 0 0 rgba(200,165,80,0); }
   50% { box-shadow:0 0 10px rgba(200,165,80,.35); }
@@ -1400,6 +1409,10 @@ input, select { font-family:'Scheherazade New','Amiri',serif; }
   color:#F2E4B8; justify-content:center; font-size:14px; padding:10px;
 }
 .swap-row.swap-revert:hover { background:rgba(200,165,80,.16); }
+.swap-add-row { margin-top:14px; }
+.swap-add-row .mini-btn { width:100%; font-size:13px; color:rgba(237,228,200,.45); }
+.swap-add-form { margin-top:14px; padding-top:14px; border-top:1px dashed rgba(255,255,255,.1); text-align:right; }
+.swap-add-form .f-submit { margin-top:2px; }
 
 /* Swap button on each task line */
 .tl-swap {
@@ -1574,6 +1587,7 @@ input, select { font-family:'Scheherazade New','Amiri',serif; }
           <button class="loc-pill" id="pill-dubai"    onclick="setLoc('dubai')"   title="دبي">🇦🇪</button>
           <button class="loc-pill" id="pill-istanbul" onclick="setLoc('istanbul')" title="إسطنبول">🇹🇷</button>
           <button class="grind-btn" id="grind-btn" onclick="openGrindModal()" title="وضع المذاكرة المكثّف">⚡</button>
+          <button class="psh-add-btn" onclick="openAddTodayPicker(event)" title="أضيفي مسؤولية لخطة اليوم">+</button>
           <button class="psh-resp-btn" onclick="showPage('resp')">المسؤوليات ←</button>
         </div>
       </div>
@@ -3025,11 +3039,21 @@ function buildPlan(optMaxH, optProfile){
    automatic allocator: it doesn't change anyone's hours or
    deadlines, it just substitutes which task sits in a given
    slot for today. Resets automatically the next day.
+
+   MANUAL PIN — "today's rotation picked nothing for this,
+   but I want to work on it anyway." Adds an existing (or
+   brand-new) responsibility ON TOP of the automatic plan,
+   without removing anything else. Also resets each day.
 ════════════════════════════════════════════════════ */
 function todaySwapMap(){
   const d = todayISO();
   if(!S.swapToday || S.swapToday.date !== d) S.swapToday = { date:d, map:{} };
   return S.swapToday.map;
+}
+function todayPinnedList(){
+  const d = todayISO();
+  if(!S.pinnedToday || S.pinnedToday.date !== d) S.pinnedToday = { date:d, ids:[] };
+  return S.pinnedToday.ids;
 }
 function pendingList(){
   return S.responsibilities.filter(r => (r.hours - (r.doneH||0)) > 0.05 && !isBlocked(r));
@@ -3053,9 +3077,73 @@ function applySwapsToPlan(plan){
     result.push(p);
     claimed.add(p.r.id);
   }
+  /* pins: responsibilities added on top of the automatic plan.
+     Each gets one category-sized block (or whatever's left of it,
+     if less) — the same "entry" sizing the algorithm itself uses. */
+  const pinnedIds = todayPinnedList();
+  const stillPinned = [];
+  for(const id of pinnedIds){
+    const r = S.responsibilities.find(x => x.id === id);
+    const stillGood = r && (r.hours - (r.doneH||0)) > 0.05 && !isBlocked(r) && !claimed.has(id);
+    if(!stillGood) continue; /* finished / blocked / already seated — drop it silently */
+    stillPinned.push(id);
+    const remaining = r.hours - (r.doneH||0);
+    const rule = catRule(r.cat);
+    const dur = qz(Math.max(QUANTUM, Math.min(remaining, rule.minBlock)));
+    result.push({ r, dur, pinned:true });
+    claimed.add(id);
+  }
+  S.pinnedToday.ids = stillPinned;
   return result;
 }
 let _swapSlotId = null;
+const ADD_TODAY_SENTINEL = '__add_today__';
+function addTodayFormHTML(){
+  return `
+    <div class="swap-add-row">
+      <button class="mini-btn" id="swap-add-toggle" onclick="toggleSwapAddForm()">+ إضافة مسؤولية جديدة</button>
+    </div>
+    <div class="swap-add-form" id="swap-add-form" style="display:none;">
+      <div class="f-row">
+        <label class="f-label">الاسم</label>
+        <input class="f-input" id="sfn" placeholder="مثال: مراجعة الجبر، مشروع المسابقة...">
+      </div>
+      <div class="f-grid2">
+        <div>
+          <label class="f-label">التصنيف</label>
+          <select class="f-input" id="sfc">
+            <option value="school">الدراسة</option>
+            <option value="quran">القرآن</option>
+            <option value="arabic">العربية</option>
+            <option value="turkish">التركية</option>
+            <option value="tutoring">التدريس</option>
+            <option value="competitions">المسابقات</option>
+            <option value="other">آخر</option>
+          </select>
+        </div>
+        <div>
+          <label class="f-label">الأولوية</label>
+          <select class="f-input" id="sfp">
+            <option value="top">قُصْوى</option>
+            <option value="high" selected>عالية</option>
+            <option value="medium">متوسّطة</option>
+            <option value="low">منخفضة</option>
+          </select>
+        </div>
+      </div>
+      <div class="f-grid2">
+        <div>
+          <label class="f-label">الساعات الإجمالية</label>
+          <input class="f-input" id="sfh" type="number" min="0.25" step="0.25" placeholder="١">
+        </div>
+        <div>
+          <label class="f-label">الموعد النهائي</label>
+          <input class="f-input" id="sfd" type="date">
+        </div>
+      </div>
+      <button class="f-submit" onclick="addRespFromSwap()">+ إضافة واستخدامها اليوم</button>
+    </div>`;
+}
 function openSwapPicker(evt, slotId){
   if(evt) evt.stopPropagation();
   const { plan } = buildPlan();
@@ -3065,6 +3153,8 @@ function openSwapPicker(evt, slotId){
   const isSwapped = currentId !== slotId;
   const candidates = pendingList().filter(r => r.id !== currentId && !planIds.has(r.id));
   _swapSlotId = slotId;
+  document.getElementById('swap-picker-label').textContent = 'بدّلي مهمة اليوم';
+  document.getElementById('swap-picker-sub').textContent = 'اختاري مسؤولية أخرى لتحلّ محلّها اليوم فقط';
   let html = '';
   if(isSwapped){
     const orig = S.responsibilities.find(r => r.id === slotId);
@@ -3082,8 +3172,67 @@ function openSwapPicker(evt, slotId){
   }else if(!isSwapped){
     html += `<div class="resp-empty">لا توجد مهمة أخرى متاحة لتبديلها اليوم</div>`;
   }
+  html += addTodayFormHTML();
   document.getElementById('swap-picker-body').innerHTML = html;
   document.getElementById('swap-overlay').classList.add('open');
+}
+/* Opened from the "+" on the plan-strip header itself — not tied to
+   any particular slot. Adds an existing (or brand-new) responsibility
+   ON TOP of today's plan instead of replacing anything. */
+function openAddTodayPicker(evt){
+  if(evt) evt.stopPropagation();
+  const { plan } = buildPlan();
+  const planIds = new Set(plan.map(p => p.r.id));
+  const candidates = pendingList().filter(r => !planIds.has(r.id));
+  _swapSlotId = ADD_TODAY_SENTINEL;
+  document.getElementById('swap-picker-label').textContent = 'أضيفي لخطة اليوم';
+  document.getElementById('swap-picker-sub').textContent = 'اختاري مسؤولية لإضافتها فوق خطة اليوم';
+  let html = '';
+  if(candidates.length){
+    html += `<div class="swap-list">` + candidates.map(r => {
+      const c = CATS[r.cat] || CATS.other;
+      return `<div class="swap-row" onclick="confirmAddToday(${r.id})">
+        <span class="tl-dot" style="background:${c.color}"></span>
+        <span class="swap-row-name">${r.name}</span>
+        <span class="swap-row-cat">${c.name}</span>
+      </div>`;
+    }).join('') + `</div>`;
+  }else{
+    html += `<div class="resp-empty">لا توجد مسؤولية معلّقة أخرى — أنشئي واحدة جديدة أدناه</div>`;
+  }
+  html += addTodayFormHTML();
+  document.getElementById('swap-picker-body').innerHTML = html;
+  document.getElementById('swap-overlay').classList.add('open');
+}
+function toggleSwapAddForm(){
+  const form = document.getElementById('swap-add-form');
+  const open = form.style.display !== 'none';
+  form.style.display = open ? 'none' : 'block';
+  document.getElementById('swap-add-toggle').textContent = open ? '+ إضافة مسؤولية جديدة' : '− إخفاء النموذج';
+  if(!open){
+    const fd = document.getElementById('sfd');
+    if(!fd.value) fd.value = todayISO();
+  }
+}
+function addRespFromSwap(){
+  const name = (document.getElementById('sfn').value || '').trim();
+  if(!name) return;
+  const cat = document.getElementById('sfc').value;
+  const hours = parseFloat(document.getElementById('sfh').value) || 1;
+  const priority = document.getElementById('sfp').value;
+  const deadline = document.getElementById('sfd').value || todayISO();
+  const item = { id:S.nextId++, name, cat, hours, deadline, doneH:0, priority };
+  S.responsibilities.push(item);
+  saveS();
+  if(_swapSlotId === ADD_TODAY_SENTINEL){
+    /* no slot to take over — just pin the freshly-made responsibility */
+    confirmAddToday(item.id);
+  }else{
+    /* immediately seat it in the slot that was open, exactly like
+       picking an existing candidate */
+    confirmSwap(item.id);
+  }
+  renderRespPage();
 }
 function confirmSwap(newId){
   const map = todaySwapMap();
@@ -3091,6 +3240,21 @@ function confirmSwap(newId){
   else map[_swapSlotId] = newId;
   saveS();
   closeSwapPicker();
+  renderPlanLines();
+}
+function confirmAddToday(id){
+  const list = todayPinnedList();
+  if(!list.includes(id)) list.push(id);
+  saveS();
+  closeSwapPicker();
+  renderPlanLines();
+}
+function unpinToday(e, id){
+  if(e) e.stopPropagation();
+  const list = todayPinnedList();
+  const i = list.indexOf(id);
+  if(i >= 0) list.splice(i, 1);
+  saveS();
   renderPlanLines();
 }
 function closeSwapPicker(){
@@ -4358,7 +4522,7 @@ function renderPlanLines(){
 
   // Each task shows: dot · name · category · [min duration — fixed] · [− / + / reset] buttons
   const planIds = new Set(plan.map(p => p.r.id));
-  planEl.innerHTML = `<div class="task-lines">` + plan.map(({r, dur, swappedFrom}) => {
+  planEl.innerHTML = `<div class="task-lines">` + plan.map(({r, dur, swappedFrom, pinned}) => {
     const cat  = CATS[r.cat];
     const done = S.completedToday.includes(r.id);
     const extra = S.extraTime[r.id] || 0;
@@ -4372,7 +4536,9 @@ function renderPlanLines(){
       <span class="tl-dur-wrap">
         <span class="tl-dur">${fmtH(total)}</span>
         ${reduced ? `<button class="tl-reset" onclick="restoreTime(event,${r.id})" title="أعِدها لحصتها الأصلية">↺</button>` : ''}
-        <button class="tl-swap" onclick="openSwapPicker(event,${slotId})" title="بدّليها بمهمة أخرى">⇄</button>
+        ${pinned
+          ? `<button class="tl-swap" onclick="unpinToday(event,${r.id})" title="أزيليها من خطة اليوم">✕</button>`
+          : `<button class="tl-swap" onclick="openSwapPicker(event,${slotId})" title="بدّليها بمهمة أخرى">⇄</button>`}
         <button class="tl-minus" onclick="minusTime(event,${r.id})" title="أنقص ١٥ دقيقة — تُعطى لمهمة أخرى">−</button>
         <button class="tl-plus" onclick="addExtra(event,${r.id})">+</button>
       </span>
@@ -4396,17 +4562,16 @@ function isFriday(){ return new Date().getDay() === 5; }
 const EXAM_DUA = [
   { t:'اللَّهُمَّ لَا سَهْلَ إِلَّا مَا جَعَلْتَهُ سَهْلًا، وَأَنْتَ تَجْعَلُ الْحَزَنَ إِذَا شِئْتَ سَهْلًا', n:'' },
   { t:'اللَّهُمَّ اجْعَلْ فِي قَلْبِي نُورًا، وَفِي بَصَرِي نُورًا، وَفِي سَمْعِي نُورًا، وَعَنْ يَمِينِي نُورًا، وَعَنْ يَسَارِي نُورًا، وَفَوْقِي نُورًا، وَتَحْتِي نُورًا، وَأَمَامِي نُورًا، وَخَلْفِي نُورًا، وَاجْعَلْ لِي نُورًا', n:'' },
-  { t:'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ، كَمَا صَلَّيْتَ عَلَى آلِ إِبْرَاهِيمَ، إِنَّكَ حَمِيدٌ مَجِيدٌ. اللَّهُمَّ بَارِكْ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ، كَمَا بَارَكْتَ عَلَى آلِ إِبْرَاهِيمَ، إِنَّكَ حَمِيدٌ مَجِيدٌ', n:'' },
+  { t:'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ صلى الله عليه وسلم وَعَلَى آلِ مُحَمَّدٍ صلى الله عليه وسلم، كَمَا صَلَّيْتَ عَلَى آلِ إِبْرَاهِيمَ عليه السلام، إِنَّكَ حَمِيدٌ مَجِيدٌ. اللَّهُمَّ بَارِكْ عَلَى مُحَمَّدٍ صلى الله عليه وسلم وَعَلَى آلِ مُحَمَّدٍ صلى الله عليه وسلم، كَمَا بَارَكْتَ عَلَى آلِ إِبْرَاهِيمَ عليه السلام، إِنَّكَ حَمِيدٌ مَجِيدٌ', n:'' },
   { t:'حَسْبِيَ اللهُ وَنِعْمَ الْوَكِيلُ', n:'' },
   { t:'قَالَ رَبِّ اشْرَحْ لِي صَدْرِي ۝ وَيَسِّرْ لِي أَمْرِي ۝ وَاحْلُلْ عُقْدَةً مِّن لِّسَانِي ۝ يَفْقَهُوا قَوْلِي', n:'طه ٢٥–٢٨' },
 ];
 const EXAM_DHIKR = [
-  'سُبْحَانَ اللهِ وَبِحَمْدِهِ',
-  'الْحَمْدُ لِلهِ الَّذِي بِنِعْمَتِهِ تَتِمُّ الصَّالِحَاتُ',
-  'الصَّلَاةُ وَالسَّلَامُ عَلَى النَّبِيِّ ﷺ — أَكْثِرِي مِنْهَا',
-  'اللهُ أَكْبَرُ',
-  'لَا إِلَهَ إِلَّا اللهُ',
+  'الصَّلَاةُ وَالسَّلَامُ عَلَى النَّبِيِّ ﷺ، وَالْحَمْدُ لِلهِ دَائِمًا وَأَبَدًا',
   'سُبْحَانَ اللهِ',
+  'الْحَمْدُ لِلهِ',
+  'لَا إِلَهَ إِلَّا اللهُ',
+  'اللهُ أَكْبَرُ',
 ];
 function nextExamDate(){
   const today = todayISO();
@@ -4990,8 +5155,8 @@ function cuteHide(){
 const DHIKR = [
   /* ṣalawāt appear most often — four of the nine entries */
   { t:'صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ', n:'' },
-  { t:'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ', n:'' },
-  { t:'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَعَلَى آلِ مُحَمَّدٍ', n:'' },
+  { t:'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ صلى الله عليه وسلم', n:'' },
+  { t:'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ صلى الله عليه وسلم وَعَلَى آلِ مُحَمَّدٍ', n:'' },
   { t:'صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ', n:'أكثِري منها' },
   { t:'اللهُ أَكْبَرُ', n:'' },
   { t:'لَا إِلَهَ إِلَّا اللهُ', n:'' },
@@ -4999,7 +5164,7 @@ const DHIKR = [
   { t:'سُبْحَانَ اللهِ', n:'' },
   { t:'سُبْحَانَ اللهِ وَبِحَمْدِهِ', n:'' },
   { t:'الْحَمْدُ لِلهِ الَّذِي بِنِعْمَتِهِ تَتِمُّ الصَّالِحَاتُ', n:'' },
-  { t:'اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى سَيِّدِنَا مُحَمَّدٍ', n:'' },
+  { t:'اللَّهُمَّ صَلِّ وَسَلِّمْ وَبَارِكْ عَلَى سَيِّدِنَا مُحَمَّدٍ صلى الله عليه وسلم', n:'' },
 ];
 let _dhikrTimer = null;
 function showDhikr(){
@@ -5771,7 +5936,7 @@ const TRIVIA_QUESTIONS = [
   { q:'كم مرة جاء ذكر كلمة "الزكاة" في القرآن؟', options:['11 مرة','20 مرة','32 مرة'], answer:'32 مرة' },
   { q:'أي سورة تُعدّ ثلث القرآن؟', options:['الناس','محمد','الإخلاص'], answer:'الإخلاص' },
   { q:'كم عدد السور المكية؟', options:['90 سورة','85 سورة','29 سورة'], answer:'85 سورة' },
-  { q:'من الذي لقّبه الرسول الكريم بـ«الطيّب المطيَّب»؟', options:['أسامة بن زيد','عمار بن ياسر','أنس بن مالك'], answer:'عمار بن ياسر' },
+  { q:'من الذي لقّبه الرسول الكريم صلى الله عليه وسلم بـ«الطيّب المطيَّب»؟', options:['أسامة بن زيد','عمار بن ياسر','أنس بن مالك'], answer:'عمار بن ياسر' },
   { q:'ما هي السورة التي تُسمّى سورة التوديع؟', options:['الفيل','الأنبياء','النصر'], answer:'النصر' },
 
   { q:'من هو النبي الذي كان قومه ينحتون من الجبال بيوتًا؟', a:'نبي الله صالح عليه السلام' },
@@ -5828,14 +5993,14 @@ const TRIVIA_QUESTIONS = [
   { q:'من هو الإنسان الذي أقسم الله بحياته في القرآن الكريم؟', a:'النبي محمد صلى الله عليه وسلم — قال تعالى: {لَعَمْرُكَ إِنَّهُمْ لَفِي سَكْرَتِهِمْ يَعْمَهُونَ} (الحجر: 72)' },
   { q:'ما الآية التي تدل على أن النبي صلى الله عليه وسلم هو خاتم النبيين؟', a:'قوله تعالى: {مَّا كَانَ مُحَمَّدٌ أَبَا أَحَدٍ مِّن رِّجَالِكُمْ وَلَٰكِن رَّسُولَ اللَّهِ وَخَاتَمَ النَّبِيِّينَ} (الأحزاب: 40)' },
   { q:'أين وُلد رسول الله محمد صلى الله عليه وسلم؟', a:'وُلد في مكة المكرمة' },
-  { q:'متى وُلد رسولنا الكريم؟', a:'وُلد في عام الفيل، الموافق 571 ميلاديًا' },
+  { q:'متى وُلد رسولنا الكريم صلى الله عليه وسلم؟', a:'وُلد في عام الفيل، الموافق 571 ميلاديًا' },
   { q:'في أي يوم وُلد رسولنا محمد صلى الله عليه وسلم؟', a:'وُلد في يوم الإثنين، بالتحديد 12 من شهر ربيع الأول' },
   { q:'اذكر اسم النبي صلى الله عليه وسلم بشكل كامل', a:'محمد بن عبد الله بن عبد المطلب بن هاشم بن عبد مَناف بن قُصَي بن كِلاب بن مُرّة بن كَعْب بن لُؤَي بن غالب بن فِهر بن مالك بن النَّضْر بن كِنَانَة بن خُزَيْمَة بن مُدْرِكَة بن إلْيَاس بن مُضَر بن نِزَار بن مَعَدّ بن عَدنان' },
   { q:'ما اسم والدة الرسول صلى الله عليه وسلم؟', a:'آمنة بنت وهب' },
   { q:'من الشخص الذي تكفّل برعاية الرسول صلى الله عليه وسلم بعد وفاة والده؟', a:'جدّه عبد المطلب' },
   { q:'من هنّ النساء اللاتي أرضعن الرسول صلى الله عليه وسلم؟', a:'حليمة السعدية، وثويبة' },
   { q:'ماذا عمل الرسول صلى الله عليه وسلم في صغره؟', a:'كان راعيًا للأغنام' },
-  { q:'اذكر اسم الحرب التي اشترك فيها رسولنا الكريم في صغره؟', a:'حرب الفجار' },
+  { q:'اذكر اسم الحرب التي اشترك فيها رسولنا الكريم صلى الله عليه وسلم في صغره؟', a:'حرب الفجار' },
   { q:'ما اللقب الذي عُرف به الرسول صلى الله عليه وسلم قبل البعثة؟', a:'الصادق الأمين' },
   { q:'ما المهنة التي عمل بها الرسول صلى الله عليه وسلم في مرحلة شبابه؟', a:'كان يعمل في مجال التجارة' },
   { q:'ما اسم أول زوجة للرسول صلى الله عليه وسلم؟', a:'السيدة خديجة بنت خويلد رضي الله عنها' },
@@ -6160,11 +6325,12 @@ updateDiveBtn();
   </div>
 </div>
 
-<!-- Swap-task picker — pick a different responsibility for today's slot -->
+<!-- Swap-task picker — pick a different responsibility for today's slot,
+     or (via the plan-strip's + button) add one on top of today's plan -->
 <div class="mini-overlay" id="swap-overlay" onclick="if(event.target===this)closeSwapPicker()">
   <div class="mini-modal swap-modal" onclick="event.stopPropagation()">
-    <div class="mini-label">بدّلي مهمة اليوم</div>
-    <div class="mini-sub">اختاري مسؤولية أخرى لتحلّ محلّها اليوم فقط</div>
+    <div class="mini-label" id="swap-picker-label">بدّلي مهمة اليوم</div>
+    <div class="mini-sub" id="swap-picker-sub">اختاري مسؤولية أخرى لتحلّ محلّها اليوم فقط</div>
     <div id="swap-picker-body"></div>
   </div>
 </div>
