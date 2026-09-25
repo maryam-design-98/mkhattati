@@ -6253,6 +6253,205 @@ if ('serviceWorker' in navigator) {
   });
 }
 </script>
+<!-- ════════════════════════════════════════════════════
+     MANUAL DAY — "I'll choose today's tasks myself."
+     Self-contained add-on: adds the ✎ button, the picker,
+     its styles, and plugs into buildPlan / renderPlanLines /
+     confirmEnergy. Paste once, just before </body>.
+════════════════════════════════════════════════════ -->
+<script>
+/* A per-day override of the whole plan: the engine is set aside
+   and only the chosen responsibilities appear. The day's energy
+   hours are split among them by priority, once, when the choice
+   is saved — so the times stay put while tasks are ticked off.
+   Resets by itself tomorrow. */
+function manualToday(){
+  const m = S.manualPlan;
+  return (m && m.date === todayISO() && Array.isArray(m.items)) ? m : null;
+}
 
+/* Hand out the budget 15 minutes at a time, always to whichever
+   chosen task is furthest below its fair share by priority.
+   Nothing gets more than it has left; micro-mode keeps its slice. */
+function allocManual(ids, budget){
+  const items = ids.map(id => S.responsibilities.find(r => r.id === id)).filter(Boolean)
+    .map(r => {
+      const rem = Math.max(QUANTUM, qz(r.hours - (r.doneH || 0)));
+      return { r, dur:0, cap: r.microMin ? Math.min(r.microMin, rem) : rem,
+               w: PRIORITY_W[r.priority] || 1 };
+    });
+  /* everything chosen gets a first slice, even on a short day */
+  for(const it of items){ it.dur = Math.min(it.cap, QUANTUM); budget -= it.dur; }
+  while(budget >= QUANTUM - 1e-9){
+    let best = null;
+    for(const it of items){
+      if(it.dur >= it.cap - 1e-9) continue;
+      if(!best || it.dur / it.w < best.dur / best.w) best = it;
+    }
+    if(!best) break;
+    const step = Math.min(QUANTUM, best.cap - best.dur);
+    best.dur += step; budget -= step;
+  }
+  return items.map(it => ({ id: it.r.id, dur: it.dur }));
+}
+
+/* What buildPlan() returns while a manual day is active */
+function manualPlanRows(){
+  const cut = S.reduceTime || {};
+  const plan = [];
+  for(const it of manualToday().items){
+    const r = S.responsibilities.find(x => x.id === it.id);
+    if(!r) continue;                               /* finished & archived, or deleted */
+    const dur = Math.max(0, it.dur - (cut[it.id] || 0));
+    if(dur < 1e-6) continue;                       /* minus-ed away for today */
+    plan.push({ r, dur });
+  }
+  return { plan, total: plan.reduce((s,p) => s + p.dur, 0) };
+}
+
+/* ── the picker ── */
+let _pickSel  = new Set();   /* ids ticked in the picker */
+let _pickDone = [];          /* tasks already done today — always kept, with their time */
+
+function pickBudget(){
+  return Math.max(0, getMaxH() - _pickDone.reduce((s,i) => s + i.dur, 0));
+}
+function openDayPicker(){
+  const { plan } = buildPlan();          /* start from what's on screen now */
+  const done = new Set(S.completedToday);
+  _pickDone = plan.filter(p => done.has(p.r.id)).map(p => ({ id:p.r.id, dur:p.dur }));
+  _pickSel  = new Set(plan.filter(p => !done.has(p.r.id)).map(p => p.r.id));
+  renderDayPicker();
+  document.getElementById('pick-overlay').classList.add('open');
+}
+function closeDayPicker(){
+  document.getElementById('pick-overlay').classList.remove('open');
+}
+function togglePick(id){
+  if(_pickSel.has(id)) _pickSel.delete(id); else _pickSel.add(id);
+  renderDayPicker();
+}
+function renderDayPicker(){
+  const done = new Set(S.completedToday);
+  const list = pendingList().filter(r => !done.has(r.id))
+    .sort((a,b) => a.deadline < b.deadline ? -1 : a.deadline > b.deadline ? 1 : a.id - b.id);
+  const preview = allocManual([..._pickSel], pickBudget());
+  const durOf = id => { const p = preview.find(i => i.id === id); return p ? p.dur : 0; };
+  const total = preview.reduce((s,i) => s + i.dur, 0) + _pickDone.reduce((s,i) => s + i.dur, 0);
+
+  let html = '';
+  if(!list.length){
+    html += `<div class="resp-empty">لا توجد مسؤوليات متبقية لاختيارها</div>`;
+  }else{
+    html += `<div class="swap-list">` + list.map(r => {
+      const c  = CATS[r.cat] || CATS.other;
+      const on = _pickSel.has(r.id);
+      const meta = on ? fmtH(durOf(r.id))
+                      : 'متبقٍّ ' + fmtH(r.hours - (r.doneH || 0)) + ' · حتى ' + shortArDate(r.deadline);
+      return `<div class="swap-row${on ? ' picked' : ''}" onclick="togglePick(${r.id})">
+        <span class="y13-box${on ? ' on' : ''}">✓</span>
+        <span class="tl-dot" style="background:${c.color}"></span>
+        <span class="swap-row-name">${escHtml(r.name)}</span>
+        <span class="swap-row-cat">${meta}</span>
+      </div>`;
+    }).join('') + `</div>`;
+  }
+  html += `<div class="pick-actions">
+    <div class="pick-summary">${_pickSel.size
+      ? 'المختار: ' + toAr(_pickSel.size) + ' · ' + fmtH(total) + ' من ' + fmtH(getMaxH())
+      : 'اختاري مهمة واحدة على الأقل'}</div>
+    <div class="mini-btn-row">
+      <button class="mini-btn primary" onclick="saveDayPicker()" ${_pickSel.size ? '' : 'disabled'}>اعتمدي هذه الخطة</button>
+      ${manualToday() ? `<button class="mini-btn" onclick="resetDayToAuto()">↺ الخطة التلقائية</button>` : ''}
+      <button class="mini-btn" onclick="closeDayPicker()">إغلاق</button>
+    </div>
+  </div>`;
+  document.getElementById('pick-body').innerHTML = html;
+}
+function saveDayPicker(){
+  if(!_pickSel.size) return;
+  S.manualPlan = { date: todayISO(),
+                   items: allocManual([..._pickSel], pickBudget()).concat(_pickDone) };
+  S.reduceTime = {};   /* fresh times — old "−" cuts no longer apply */
+  saveS(); closeDayPicker(); renderPlanLines();
+}
+function resetDayToAuto(){
+  S.manualPlan = null;
+  S.reduceTime = {};
+  saveS(); closeDayPicker(); renderPlanLines();
+}
+
+/* ── plug into the existing app ── */
+
+/* 1. the engine steps aside on a manual day (the neutral reference
+      plan on the responsibilities page stays automatic) */
+const _mdOrigBuildPlan = buildPlan;
+buildPlan = function(optMaxH, optProfile){
+  if(!optMaxH && !optProfile && manualToday()){ rollRecurring(); return manualPlanRows(); }
+  return _mdOrigBuildPlan(optMaxH, optProfile);
+};
+
+/* 2. home strip: label, ✎ highlight, no ⇄ on a manual day,
+      and a kinder message once the chosen tasks are all finished */
+const _mdOrigRenderPlanLines = renderPlanLines;
+renderPlanLines = function(){
+  _mdOrigRenderPlanLines();
+  const manual = !!manualToday();
+  const lbl = document.querySelector('.psh-label');
+  if(lbl) lbl.textContent = manual ? 'خطة اليوم · اختياركِ' : 'خطة اليوم';
+  const pb = document.getElementById('pick-btn');
+  if(pb) pb.classList.toggle('active', manual);
+  if(manual){
+    document.querySelectorAll('#plan-lines .tl-swap').forEach(b => b.remove());
+    const empty = document.querySelector('#plan-lines .plan-empty');
+    if(empty) empty.textContent = 'أنهيتِ ما اخترتِه لليوم ✦ — اضغطي ✎ لإضافة المزيد';
+  }
+};
+
+/* 3. changing energy re-splits the chosen tasks over the new hours */
+const _mdOrigConfirmEnergy = confirmEnergy;
+confirmEnergy = function(){
+  const picked = _selE;
+  _mdOrigConfirmEnergy();
+  if(picked && manualToday()){
+    S.manualPlan.items = allocManual(S.manualPlan.items.map(i => i.id), getMaxH());
+    saveS(); renderPlanLines();
+  }
+};
+
+/* 4. Escape closes the picker */
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape' && document.getElementById('pick-overlay').classList.contains('open')) closeDayPicker();
+});
+
+/* 5. styles, the ✎ button (just before ⚡), and the picker modal */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #pick-btn.active { opacity:1; border-color:rgba(200,165,80,.55); background:rgba(200,165,80,.12); color:#F2E4B8; animation:none; }
+    .swap-row.picked { border-color:rgba(200,165,80,.45); background:rgba(200,165,80,.07); }
+    .pick-actions { position:sticky; bottom:-26px; background:rgba(4,7,22,.97); padding:12px 0 6px; margin-top:10px; }
+    .pick-summary { font-size:13px; color:rgba(200,165,80,.75); margin-bottom:10px; }
+    .mini-btn:disabled { opacity:.35; cursor:default; }
+  `;
+  document.head.appendChild(st);
+
+  const g = document.getElementById('grind-btn');
+  if(g) g.insertAdjacentHTML('beforebegin',
+    `<button class="grind-btn" id="pick-btn" onclick="openDayPicker()" title="اختاري مهام اليوم بنفسك">✎</button>`);
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div class="mini-overlay" id="pick-overlay" onclick="if(event.target===this)closeDayPicker()">
+      <div class="mini-modal swap-modal" onclick="event.stopPropagation()">
+        <div class="mini-label">مهامّ اليوم</div>
+        <div class="mini-sub">اختاري ما تريدين العمل عليه اليوم — تُقسَم ساعات طاقتك بينها بحسب الأولويّة، وغدًا تعود الخطة التلقائية</div>
+        <div id="pick-body"></div>
+      </div>
+    </div>`);
+})();
+
+/* 6. redraw now that everything is connected */
+renderPlanLines();
+</script>
 </body>
 </html>
