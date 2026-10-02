@@ -6452,6 +6452,820 @@ document.addEventListener('keydown', e => {
 
 /* 6. redraw now that everything is connected */
 renderPlanLines();
+<!-- ════════════════════════════════════════════════════
+     ALL-IN-ONE ADD-ON (Oct 2026)
+       1. scroll            2. ṣalawāt wording
+       3. Qur'an reader     4. tafsīr as-Saʿdī
+       5. recitation        6. daily wird
+       7. ḥifẓ & murājaʿa
+     Paste this whole block ONCE, just before </body>,
+     after the "MANUAL DAY" (✎) script.
+════════════════════════════════════════════════════ -->
+<script>
+/* ────────────────────────────────────────────────────
+   1. SCROLL — nothing is ever cut off again.
+──────────────────────────────────────────────────── */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    #page-home { overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+    #page-home .verse-sky { flex:1 0 auto; min-height:150px; padding:14px 12% 54px; }
+    .mini-modal, .energy-modal { max-height:calc(100vh - 48px); max-height:calc(100dvh - 48px); overflow-y:auto; }
+    #verse-moment-overlay, #reflection-overlay { justify-content:flex-start; overflow-y:auto; }
+    #verse-moment-overlay .vm-ornament { margin-top:auto; }
+    #verse-moment-overlay .vm-ref { margin-bottom:auto; }
+    #reflection-overlay .refl-label { margin-top:auto; }
+    #reflection-overlay #refl-body { margin-bottom:auto; }
+    .trivia-body { align-items:flex-start; }
+    .trivia-card { margin:auto; }
+  `;
+  document.head.appendChild(st);
+})();
+
+/* ────────────────────────────────────────────────────
+   2. ṢALAWĀT — the wording in the «عند الضيق» card,
+   with «عليه السلام» after every mention of Ibrāhīm.
+──────────────────────────────────────────────────── */
+(function(){
+  const NEW_SALAWAT = 'اللَّهُمَّ صَلِّ عَلَى سَيِّدِنَا مُحَمَّدٍ صلى الله عليه وسلم وَعَلَى آلِ سَيِّدِنَا مُحَمَّدٍ صلى الله عليه وسلم، كَمَا صَلَّيْتَ عَلَى سَيِّدِنَا إِبْرَاهِيمَ عليه السلام وَعَلَى آلِ سَيِّدِنَا إِبْرَاهِيمَ عليه السلام، إِنَّكَ حَمِيدٌ مَجِيدٌ. اللَّهُمَّ بَارِكْ عَلَى سَيِّدِنَا مُحَمَّدٍ صلى الله عليه وسلم وَعَلَى آلِ سَيِّدِنَا مُحَمَّدٍ صلى الله عليه وسلم، كَمَا بَارَكْتَ عَلَى سَيِّدِنَا إِبْرَاهِيمَ عليه السلام وَعَلَى آلِ سَيِّدِنَا إِبْرَاهِيمَ عليه السلام، إِنَّكَ حَمِيدٌ مَجِيدٌ.';
+  const d = STRESS_DUAS.find(x => x.n && x.n.indexOf('٣') !== -1) || STRESS_DUAS[1];
+  if(d) d.t = NEW_SALAWAT;
+})();
+
+/* ────────────────────────────────────────────────────
+   3. QUR'AN READER — page by page, Madinah muṣḥaf (604 pages).
+   The text is never typed here: it is fetched from
+   api.alquran.cloud (Uthmani edition) and shown as received.
+   Everything is saved in S.quran, so it is in your export file.
+──────────────────────────────────────────────────── */
+const QURAN_API   = 'https://api.alquran.cloud/v1/page/';
+const QURAN_PAGES = 604;
+const BASMALA     = 'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ';
+const SURAH_NAMES = ['الفاتحة','البقرة','آل عمران','النساء','المائدة','الأنعام','الأعراف','الأنفال','التوبة','يونس',
+  'هود','يوسف','الرعد','إبراهيم','الحجر','النحل','الإسراء','الكهف','مريم','طه',
+  'الأنبياء','الحج','المؤمنون','النور','الفرقان','الشعراء','النمل','القصص','العنكبوت','الروم',
+  'لقمان','السجدة','الأحزاب','سبأ','فاطر','يس','الصافات','ص','الزمر','غافر',
+  'فصلت','الشورى','الزخرف','الدخان','الجاثية','الأحقاف','محمد','الفتح','الحجرات','ق',
+  'الذاريات','الطور','النجم','القمر','الرحمن','الواقعة','الحديد','المجادلة','الحشر','الممتحنة',
+  'الصف','الجمعة','المنافقون','التغابن','الطلاق','التحريم','الملك','القلم','الحاقة','المعارج',
+  'نوح','الجن','المزمل','المدثر','القيامة','الإنسان','المرسلات','النبأ','النازعات','عبس',
+  'التكوير','الانفطار','المطففين','الانشقاق','البروج','الطارق','الأعلى','الغاشية','الفجر','البلد',
+  'الشمس','الليل','الضحى','الشرح','التين','العلق','القدر','البينة','الزلزلة','العاديات',
+  'القارعة','التكاثر','العصر','الهمزة','الفيل','قريش','الماعون','الكوثر','الكافرون','النصر',
+  'المسد','الإخلاص','الفلق','الناس'];
+/* first page of each sūrah in the Madinah muṣḥaf */
+const SURAH_PAGE = [1,2,50,77,106,128,151,177,187,208,
+  221,235,249,255,262,267,282,293,305,312,
+  322,332,342,350,359,367,377,385,396,404,
+  411,415,418,428,434,440,446,453,458,467,
+  477,483,489,496,499,502,507,511,515,518,
+  520,523,526,528,531,534,537,542,545,549,
+  551,553,554,556,558,560,562,564,566,568,
+  570,572,574,575,577,578,580,582,583,585,
+  586,587,587,589,590,591,591,592,593,594,
+  595,595,596,596,597,597,598,598,599,599,
+  600,600,601,601,601,602,602,602,603,603,
+  603,604,604,604];
+function juzPage(n){ return n === 1 ? 1 : (n - 1) * 20 + 2; }
+
+function qState(){
+  if(!S.quran) S.quran = { page:1, mark:null, size:26 };
+  return S.quran;
+}
+function qx(){
+  const q = qState();
+  if(!q.wird)    q.wird = { pages:0, pos:1, doneDate:null, doneFrom:null, doneTo:null };
+  if(!q.hifz)    q.hifz = {};            /* surah number → { st:'l' | 'd', rev:'YYYY-MM-DD' | null } */
+  if(!q.reciter) q.reciter = 'ar.alafasy';
+  return q;
+}
+
+const _qCache = {};          /* pages already fetched this session */
+let _qToken = 0;             /* guards against a slow page landing after a newer one */
+
+async function quranFetch(p){
+  if(_qCache[p]) return _qCache[p];
+  const res = await fetch(QURAN_API + p + '/quran-uthmani');
+  if(!res.ok) throw new Error('http ' + res.status);
+  const j = await res.json();
+  if(!j || !j.data || !Array.isArray(j.data.ayahs) || !j.data.ayahs.length) throw new Error('empty');
+  _qCache[p] = j.data.ayahs;
+  return _qCache[p];
+}
+
+const Q_MARKS = /[\u064B-\u065F\u0670\u06D6-\u06ED]/g;
+function quranPageHTML(ayahs){
+  let html = '<div class="q-text">';
+  for(const a of ayahs){
+    let text = String(a.text || '').replace(/^\uFEFF/, '').trim();
+    const sn = a.surah && a.surah.number;
+    if(a.numberInSurah === 1){
+      /* the API prefixes the basmala to the first āyah of a sūrah —
+         lift it out and show it on its own line (not for الفاتحة,
+         where it IS the first āyah, nor for التوبة, which has none) */
+      let bas = '';
+      if(sn !== 1 && sn !== 9){
+        const w = text.split(/\s+/);
+        if(w.length > 4 && w[0].replace(Q_MARKS, '').indexOf('بسم') === 0){
+          bas = w.slice(0, 4).join(' ');
+          text = w.slice(4).join(' ');
+        }else bas = BASMALA;
+      }
+      html += `</div><div class="q-surah-head" id="q-surah-${sn}">${escHtml((a.surah && a.surah.name) || ('سورة ' + SURAH_NAMES[sn - 1]))}</div>`
+           +  (bas ? `<div class="q-basmala">${escHtml(bas)}</div>` : '')
+           +  '<div class="q-text">';
+    }
+    html += `<span class="q-ayah" id="q-a-${a.number}" onclick="quranAyahTap(${a.number})">${escHtml(text)}</span> <span class="q-num">\uFD3F${toAr(a.numberInSurah)}\uFD3E</span> `;
+  }
+  return html + '</div>';
+}
+
+async function quranGo(p, surahToShow){
+  if(!_qContinuing) quranStop();     /* turning the page yourself stops the recitation */
+  const q = qState();
+  p = Math.max(1, Math.min(QURAN_PAGES, Math.round(p) || 1));
+  q.page = p; saveS();
+  const body = document.getElementById('quran-body');
+  const statusEl = document.getElementById('quran-status');
+  const my = ++_qToken;
+  quranFoot();
+  if(!_qCache[p]){ body.innerHTML = '<div class="q-msg">…</div>'; statusEl.textContent = ''; }
+  try{
+    const ayahs = await quranFetch(p);
+    if(my !== _qToken) return;
+    body.innerHTML = quranPageHTML(ayahs);
+    body.scrollTop = 0;
+    const names = [];
+    ayahs.forEach(a => { const n = SURAH_NAMES[a.surah.number - 1]; if(names.indexOf(n) === -1) names.push(n); });
+    statusEl.textContent = names.join(' · ') + '  •  الجزء ' + toAr(ayahs[0].juz);
+    if(surahToShow){
+      const h = document.getElementById('q-surah-' + surahToShow);
+      if(h && h.offsetTop > 60) body.scrollTop = h.offsetTop - 14;
+    }
+    /* quietly fetch the next page too, so turning is instant */
+    if(p < QURAN_PAGES) quranFetch(p + 1).catch(() => {});
+  }catch(e){
+    if(my !== _qToken) return;
+    body.innerHTML = `<div class="q-msg">تعذّر تحميل الصفحة — تحقّقي من الاتصال<br>
+      <button class="q-tool" onclick="quranGo(${p})">إعادة المحاولة</button></div>`;
+  }
+}
+function quranStep(d){
+  const p = qState().page + d;
+  if(p >= 1 && p <= QURAN_PAGES) quranGo(p);
+}
+function quranFoot(){
+  const q = qState();
+  const pn = document.getElementById('q-page-num'); if(!pn) return;
+  pn.textContent = 'صفحة ' + toAr(q.page) + ' / ' + toAr(QURAN_PAGES);
+  document.getElementById('q-prev').disabled = q.page <= 1;
+  document.getElementById('q-next').disabled = q.page >= QURAN_PAGES;
+  const setB = document.getElementById('q-mark-set'), goB = document.getElementById('q-mark-go');
+  const here = q.mark === q.page;
+  setB.textContent = here ? '⚑ العلامة هنا' : '⚑ ضعي العلامة هنا';
+  setB.title = here ? 'اضغطي لإزالة العلامة' : 'احفظي هذه الصفحة موضعًا لختمتك';
+  setB.classList.toggle('on', here);
+  goB.style.display = (q.mark && !here) ? '' : 'none';
+  if(q.mark) goB.textContent = 'إلى العلامة · ص ' + toAr(q.mark);
+  /* wird status + "done" button on the wird's last page */
+  const r = wirdRange();
+  const wb = document.getElementById('q-wird-btn'), db = document.getElementById('q-wird-done');
+  wb.textContent = r ? (r.done ? 'الوِرد ✓' : 'الوِرد · ' + wirdRangeText(r)) : 'الوِرد';
+  wb.classList.toggle('on', !!r && !r.done);
+  db.style.display = (r && !r.done && q.page === r.to) ? '' : 'none';
+}
+function quranSetMark(){
+  const q = qState();
+  q.mark = (q.mark === q.page) ? null : q.page;
+  saveS(); quranFoot();
+}
+function quranGoMark(){ const q = qState(); if(q.mark) quranGo(q.mark); }
+function quranSize(d){
+  const q = qState();
+  q.size = Math.max(20, Math.min(42, (q.size || 26) + d));
+  saveS(); quranApplySize();
+}
+function quranApplySize(){
+  document.getElementById('quran-body').style.setProperty('--q-size', (qState().size || 26) + 'px');
+}
+function quranOpen(){ quranApplySize(); quranGo(qState().page || 1); }
+
+/* ── index: page number · ajzāʾ · sūrahs ── */
+function qNorm(s){ return String(s).replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').trim(); }
+function quranOpenIndex(){
+  document.getElementById('q-jump').value = '';
+  document.getElementById('q-search').value = '';
+  let jz = '';
+  for(let n = 1; n <= 30; n++) jz += `<button class="q-juz-chip" onclick="quranCloseIndex();quranGo(${juzPage(n)})">${toAr(n)}</button>`;
+  document.getElementById('q-juz').innerHTML = jz;
+  quranRenderSurahs();
+  document.getElementById('quran-index-overlay').classList.add('open');
+}
+function quranCloseIndex(){ document.getElementById('quran-index-overlay').classList.remove('open'); }
+function quranRenderSurahs(){
+  const qv = qNorm(document.getElementById('q-search').value || '');
+  let html = '';
+  if(!qv && isFriday())
+    html += `<div class="swap-row swap-revert" onclick="quranPick(18)">✦ سورة الكهف — سُنّة الجمعة ✦</div>`;
+  SURAH_NAMES.forEach((n, i) => {
+    if(qv && qNorm(n).indexOf(qv) === -1) return;
+    html += `<div class="swap-row" onclick="quranPick(${i + 1})">
+      <span class="q-idx">${toAr(i + 1)}</span>
+      <span class="swap-row-name">${n}</span>
+      <span class="swap-row-cat">ص ${toAr(SURAH_PAGE[i])}</span>
+    </div>`;
+  });
+  document.getElementById('q-surahs').innerHTML = html || '<div class="resp-empty">لا نتائج</div>';
+}
+function quranPick(n){ quranCloseIndex(); quranGo(SURAH_PAGE[n - 1], n); }
+function quranJump(){
+  const v = parseInt(document.getElementById('q-jump').value, 10);
+  if(!v || v < 1 || v > QURAN_PAGES) return;
+  quranCloseIndex(); quranGo(v);
+}
+
+/* ────────────────────────────────────────────────────
+   4. TAFSĪR AS-SAʿDĪ — tap any āyah.
+   Fetched from the open tafsir_api dataset, one file per
+   sūrah; quran.com is the fallback. As-Saʿdī often explains
+   several āyāt together, so when an āyah has no entry of its
+   own we show the passage it belongs to and say so.
+──────────────────────────────────────────────────── */
+const TAFSIR_CDN = 'https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/ar-tafseer-al-saddi/';
+const TAFSIR_ALT = 'https://api.quran.com/api/v4/tafsirs/91/by_ayah/';
+const _tfCache = {};
+let _qTapNum = null, _tfToken = 0;
+
+function tfClean(html){
+  const s = String(html || '')
+    .replace(/<\s*(br|\/p|\/div|\/h\d|\/li)\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  const t = document.createElement('textarea');   /* decodes &amp; &quot; … safely */
+  t.innerHTML = s;
+  return t.value.replace(/\u00A0/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+async function tfSurah(s){
+  if(_tfCache[s]) return _tfCache[s];
+  const res = await fetch(TAFSIR_CDN + s + '.json');
+  if(!res.ok) throw new Error('http ' + res.status);
+  const j = await res.json();
+  const list = Array.isArray(j) ? j : (j.ayahs || j.data || []);
+  const map = {};
+  list.forEach(x => {
+    const n = x.ayah != null ? x.ayah : x.ayah_number;
+    const t = tfClean(x.text);
+    if(n != null && t) map[n] = t;
+  });
+  if(!Object.keys(map).length) throw new Error('shape');
+  return (_tfCache[s] = map);
+}
+async function tfGet(s, a){
+  try{
+    const map = await tfSurah(s);
+    for(let k = a; k >= 1 && k > a - 40; k--){ if(map[k]) return { text:map[k], from:k }; }
+  }catch(e){}
+  const res = await fetch(TAFSIR_ALT + s + ':' + a);
+  if(!res.ok) throw new Error('http ' + res.status);
+  const j = await res.json();
+  const t = tfClean(j && j.tafsir && j.tafsir.text);
+  if(!t) throw new Error('empty');
+  return { text:t, from:a };
+}
+function quranAyahTap(number){
+  const a = (_qCache[qState().page] || []).find(x => x.number === number);
+  const el = document.getElementById('q-a-' + number);
+  if(!a || !el) return;
+  _qTapNum = number;
+  document.getElementById('q-ayah-ref').textContent =
+    'سورة ' + SURAH_NAMES[a.surah.number - 1] + ' · الآية ' + toAr(a.numberInSurah);
+  document.getElementById('q-ayah-quote').textContent = el.textContent;
+  const box = document.getElementById('q-tafsir');
+  box.textContent = 'جارٍ التحميل…';
+  document.getElementById('q-ayah-overlay').classList.add('open');
+  const my = ++_tfToken;
+  tfGet(a.surah.number, a.numberInSurah).then(r => {
+    if(my !== _tfToken) return;
+    box.innerHTML = (r.from !== a.numberInSurah
+        ? `<div class="q-tf-note">تفسير هذه الآية واردٌ ضمن تفسير الآية ${toAr(r.from)} وما بعدها</div>` : '')
+      + escHtml(r.text);
+  }).catch(() => {
+    if(my === _tfToken) box.textContent = 'تعذّر تحميل التفسير — تحقّقي من الاتصال';
+  });
+}
+function quranCloseAyah(){ document.getElementById('q-ayah-overlay').classList.remove('open'); }
+
+/* ────────────────────────────────────────────────────
+   5. RECITATION — āyah by āyah, highlighting the āyah being
+   read and turning the page by itself. Stops when you turn
+   the page yourself or leave the reader.
+──────────────────────────────────────────────────── */
+const Q_RECITERS = [
+  { id:'ar.alafasy',  name:'العفاسي'  },
+  { id:'ar.husary',   name:'الحصري'   },
+  { id:'ar.minshawi', name:'المنشاوي' },
+];
+const _qAud = new Audio();
+_qAud.preload = 'auto';
+let _qPlaying = false, _qPlayPage = null, _qPlayIdx = 0, _qContinuing = false;
+
+function quranAudioURL(n){ return 'https://cdn.islamic.network/quran/audio/128/' + qx().reciter + '/' + n + '.mp3'; }
+function quranPlayFrom(number){
+  const p = qState().page, ayahs = _qCache[p];
+  if(!ayahs) return;
+  let i = number ? ayahs.findIndex(a => a.number === number) : 0;
+  if(i < 0) i = 0;
+  _qPlaying = true; _qPlayPage = p;
+  quranPlayIdx(i);
+}
+function quranPlayIdx(i){
+  const ayahs = _qCache[_qPlayPage];
+  if(!_qPlaying || !ayahs) return;
+  if(i >= ayahs.length){ quranPlayNextPage(); return; }
+  _qPlayIdx = i;
+  _qAud.src = quranAudioURL(ayahs[i].number);
+  const pr = _qAud.play();
+  if(pr && pr.catch) pr.catch(e => { if(e && e.name === 'NotAllowedError') quranStop(); });
+  quranHighlight(ayahs[i].number);
+  quranAudioUI();
+}
+async function quranPlayNextPage(){
+  if(_qPlayPage >= QURAN_PAGES || S.page !== 'quran'){ quranStop(); return; }
+  const next = _qPlayPage + 1;
+  _qContinuing = true;
+  try{ await quranGo(next); } finally { _qContinuing = false; }
+  if(_qPlaying && _qCache[next] && qState().page === next){ _qPlayPage = next; quranPlayIdx(0); }
+  else quranStop();
+}
+function quranStop(){
+  _qPlaying = false;
+  _qAud.pause();
+  quranHighlight(null);
+  quranAudioUI();
+}
+function quranHighlight(number){
+  document.querySelectorAll('.q-ayah.playing').forEach(e => e.classList.remove('playing'));
+  if(number == null) return;
+  const el = document.getElementById('q-a-' + number);
+  if(el){ el.classList.add('playing'); el.scrollIntoView({ block:'center', behavior:'smooth' }); }
+}
+function quranToggleAudio(){ if(_qPlaying) quranStop(); else quranPlayFrom(null); }
+function quranCycleReciter(){
+  const q = qx();
+  const i = Q_RECITERS.findIndex(r => r.id === q.reciter);
+  q.reciter = Q_RECITERS[(i + 1) % Q_RECITERS.length].id;
+  saveS();
+  if(_qPlaying) quranPlayIdx(_qPlayIdx); else quranAudioUI();
+}
+function quranAudioUI(){
+  const b = document.getElementById('q-play'), rb = document.getElementById('q-reciter');
+  if(!b || !rb) return;
+  b.textContent = _qPlaying ? '■ إيقاف' : '▶ استماع';
+  b.classList.toggle('on', _qPlaying);
+  const r = Q_RECITERS.find(x => x.id === qx().reciter) || Q_RECITERS[0];
+  rb.textContent = 'القارئ: ' + r.name;
+}
+_qAud.addEventListener('ended', () => { if(_qPlaying) quranPlayIdx(_qPlayIdx + 1); });
+_qAud.addEventListener('error', () => {
+  if(!_qPlaying) return;
+  quranStop();
+  const st = document.getElementById('quran-status');
+  if(st) st.textContent = 'تعذّر تشغيل التلاوة — تحقّقي من الاتصال أو جرّبي قارئًا آخر';
+});
+
+/* ────────────────────────────────────────────────────
+   6. DAILY WIRD — N pages a day, the first line of خطة اليوم.
+   NOT taken out of your energy hours.
+     tap the line → opens the reader at today's first page
+     tap ✓        → done for today; tomorrow continues after it
+     tap ↺        → undo
+──────────────────────────────────────────────────── */
+function wirdRange(){
+  const w = qx().wird;
+  if(!w.pages) return null;
+  if(w.doneDate === todayISO()) return { from:w.doneFrom, to:w.doneTo, done:true };
+  return { from:w.pos, to:Math.min(QURAN_PAGES, w.pos + w.pages - 1), done:false };
+}
+function wirdRangeText(r){ return r.from === r.to ? 'ص ' + toAr(r.from) : 'ص ' + toAr(r.from) + ' إلى ' + toAr(r.to); }
+function wirdToggle(e){
+  if(e) e.stopPropagation();
+  const w = qx().wird, r = wirdRange();
+  if(!r) return;
+  if(r.done){ w.pos = w.doneFrom; w.doneDate = null; }
+  else{
+    w.doneFrom = r.from; w.doneTo = r.to; w.doneDate = todayISO();
+    w.pos = r.to >= QURAN_PAGES ? 1 : r.to + 1;
+    if(r.to >= QURAN_PAGES) wirdSay('الحمد لله — خَتْمَةٌ تامّة ✦');
+  }
+  saveS(); renderPlanLines(); quranFoot();
+}
+function wirdSay(t){
+  const el = document.getElementById('dhikr-line'); if(!el) return;
+  el.textContent = t; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 7000);
+}
+function wirdOpen(){
+  const r = wirdRange(); if(!r) return;
+  qState().page = r.from;
+  showPage('quran');
+}
+function wirdRenderLine(){
+  const planEl = document.getElementById('plan-lines'); if(!planEl) return;
+  const r = wirdRange(); if(!r) return;
+  const html = `<div class="task-line wird-line${r.done ? ' done' : ''}" onclick="wirdOpen()">
+      <span class="tl-dot" style="background:${CATS.quran.color}"></span>
+      <span class="tl-name">وِرد القرآن</span>
+      <span class="tl-cat">${wirdRangeText(r)}</span>
+      <span class="tl-dur-wrap">
+        <button class="tl-plus" onclick="wirdToggle(event)" title="${r.done ? 'تراجع' : 'أتممتُ وِرد اليوم'}">${r.done ? '↺' : '✓'}</button>
+      </span>
+    </div>`;
+  const tl = planEl.querySelector('.task-lines');
+  if(tl) tl.insertAdjacentHTML('afterbegin', html);
+  else planEl.insertAdjacentHTML('afterbegin', '<div class="task-lines">' + html + '</div>');
+}
+function wirdOpenSettings(){
+  const w = qx().wird;
+  document.getElementById('wird-pages').value = w.pages || '';
+  document.getElementById('wird-pos').value = w.pos || 1;
+  wirdPreview();
+  document.getElementById('q-wird-overlay').classList.add('open');
+}
+function wirdClose(){ document.getElementById('q-wird-overlay').classList.remove('open'); }
+function wirdHere(){ document.getElementById('wird-pos').value = qState().page; wirdPreview(); }
+function wirdPreview(){
+  const p   = parseInt(document.getElementById('wird-pages').value, 10) || 0;
+  const pos = parseInt(document.getElementById('wird-pos').value, 10) || 1;
+  const el  = document.getElementById('wird-preview');
+  if(p <= 0){ el.textContent = 'الوِرد متوقّف'; return; }
+  const days = Math.ceil((QURAN_PAGES - Math.min(QURAN_PAGES, Math.max(1, pos)) + 1) / p);
+  el.textContent = 'بهذا المعدّل تُتمّين الختمة في نحو ' + toAr(days) + (days >= 3 && days <= 10 ? ' أيام' : ' يومًا');
+}
+function wirdSave(){
+  const w = qx().wird;
+  w.pages = Math.max(0, Math.min(60, parseInt(document.getElementById('wird-pages').value, 10) || 0));
+  w.pos   = Math.max(1, Math.min(QURAN_PAGES, parseInt(document.getElementById('wird-pos').value, 10) || 1));
+  saveS(); wirdClose(); renderPlanLines(); quranFoot();
+}
+
+/* ────────────────────────────────────────────────────
+   7. ḤIFẒ & MURĀJAʿA — per sūrah.
+     قيد الحفظ → «✓ حفظتُها» marks it memorised and seeds
+       spaced reviews (1 / 3 / 7 / 16 days) as ordinary
+       responsibilities in the القرآن category.
+     مراجعة اليوم → the memorised sūrahs you have gone longest
+       without reviewing; mark reviewed, or send one to the plan.
+   Finishing one of those responsibilities in خطة اليوم also
+   stamps the sūrah as reviewed today.
+──────────────────────────────────────────────────── */
+function hifzPages(n){ return Math.max(1, (n < 114 ? SURAH_PAGE[n] : QURAN_PAGES + 1) - SURAH_PAGE[n - 1]); }
+function hifzHours(n){ return Math.min(2, Math.max(0.25, Math.round(hifzPages(n) * 2 / 15) * 0.25)); }
+function hifzAgo(d){
+  if(!d) return 'لم تُراجَع بعد';
+  const n = daysBetween(d, todayISO());
+  if(n <= 0) return 'رُوجعت اليوم';
+  if(n === 1) return 'آخر مراجعة: أمس';
+  if(n === 2) return 'آخر مراجعة: قبل يومين';
+  return 'آخر مراجعة: قبل ' + toAr(n) + (n <= 10 ? ' أيام' : ' يومًا');
+}
+function hifzInPlan(n){
+  return S.responsibilities.some(r => r.hifzSurah === n && (r.hours - (r.doneH || 0)) > 0.05);
+}
+function hifzAddResp(n, daysAhead){
+  S.responsibilities.push({
+    id:S.nextId++, name:'مراجعة سورة ' + SURAH_NAMES[n - 1], cat:'quran', hours:hifzHours(n),
+    deadline:isoPlus(daysAhead), doneH:0, priority:'medium', isEcho:true, hifzSurah:n
+  });
+}
+function hifzOpenModal(){
+  document.getElementById('hz-search').value = '';
+  hifzRenderTop(); hifzRenderList();
+  document.getElementById('q-hifz-overlay').classList.add('open');
+}
+function hifzCloseModal(){ document.getElementById('q-hifz-overlay').classList.remove('open'); }
+function hifzGo(n){ hifzCloseModal(); quranGo(SURAH_PAGE[n - 1], n); }
+function hifzRenderTop(){
+  const h = qx().hifz, today = todayISO();
+  const nums = Object.keys(h).map(Number).sort((a, b) => a - b);
+  const learning = nums.filter(n => h[n].st === 'l');
+  const done     = nums.filter(n => h[n].st === 'd');
+  const due = done.filter(n => h[n].rev !== today)
+    .sort((a, b) => (h[a].rev || '') < (h[b].rev || '') ? -1 : (h[a].rev || '') > (h[b].rev || '') ? 1 : a - b)
+    .slice(0, 3);
+  let html = `<div class="q-sec-label" style="text-align:center">المحفوظ: ${toAr(done.length)} · قيد الحفظ: ${toAr(learning.length)}</div>`;
+
+  html += `<div class="q-sec-label">مراجعة اليوم</div>`;
+  if(!done.length) html += `<div class="hz-empty">علّمي السور المحفوظة في القائمة أدناه لتظهر هنا مراجعتها</div>`;
+  else if(!due.length) html += `<div class="hz-empty">راجعتِ اليوم كلَّ ما حفظتِ ✦</div>`;
+  due.forEach(n => {
+    html += `<div class="hz-row">
+      <span class="swap-row-name" onclick="hifzGo(${n})">${SURAH_NAMES[n - 1]}</span>
+      <span class="swap-row-cat">${hifzAgo(h[n].rev)}</span>
+      <button class="q-tool" onclick="hifzGo(${n})">افتحي</button>
+      ${hifzInPlan(n) ? '<span class="swap-row-cat">في الخطة ✓</span>'
+                      : `<button class="q-tool" onclick="hifzToPlan(${n})">+ إلى الخطة</button>`}
+      <button class="q-tool on" onclick="hifzReviewed(${n})">✓ راجعتُها</button>
+    </div>`;
+  });
+
+  if(learning.length){
+    html += `<div class="q-sec-label">قيد الحفظ</div>`;
+    learning.forEach(n => {
+      html += `<div class="hz-row">
+        <span class="swap-row-name" onclick="hifzGo(${n})">${SURAH_NAMES[n - 1]}</span>
+        <span class="swap-row-cat">${toAr(hifzPages(n))} ${hifzPages(n) <= 10 && hifzPages(n) >= 3 ? 'صفحات' : 'صفحة'}</span>
+        <button class="q-tool" onclick="hifzGo(${n})">افتحي</button>
+        <button class="q-tool on" onclick="hifzMemorized(${n})">✓ حفظتُها</button>
+      </div>`;
+    });
+  }
+  document.getElementById('hz-top').innerHTML = html;
+}
+function hifzChip(n){
+  const st = (qx().hifz[n] || {}).st;
+  return `<button class="hz-chip${st === 'd' ? ' d' : st === 'l' ? ' l' : ''}" onclick="hifzCycle(${n})" id="hz-chip-${n}">${
+    st === 'd' ? 'محفوظة ✓' : st === 'l' ? 'أحفظها' : '—'}</button>`;
+}
+function hifzRenderList(){
+  const qv = qNorm(document.getElementById('hz-search').value || '');
+  let html = '';
+  SURAH_NAMES.forEach((name, i) => {
+    if(qv && qNorm(name).indexOf(qv) === -1) return;
+    html += `<div class="hz-row"><span class="q-idx">${toAr(i + 1)}</span>
+      <span class="swap-row-name">${name}</span>${hifzChip(i + 1)}</div>`;
+  });
+  document.getElementById('hz-list').innerHTML = html || '<div class="hz-empty">لا نتائج</div>';
+}
+/* tap the status chip:  —  →  أحفظها  →  محفوظة  →  —
+   (status only; it never creates tasks, so you can mark everything
+   you already know without flooding the plan) */
+function hifzCycle(n){
+  const h = qx().hifz, cur = (h[n] || {}).st;
+  if(!cur) h[n] = { st:'l', rev:null };
+  else if(cur === 'l') h[n] = { st:'d', rev:h[n].rev || null };
+  else delete h[n];
+  saveS();
+  const chip = document.getElementById('hz-chip-' + n);
+  if(chip) chip.outerHTML = hifzChip(n);
+  hifzRenderTop();
+}
+function hifzMemorized(n){
+  qx().hifz[n] = { st:'d', rev:todayISO() };
+  [1, 3, 7, 16].forEach(d => hifzAddResp(n, d));
+  saveS(); hifzRenderTop(); hifzRenderList(); renderPlanLines();
+  wirdSay('ما شاء الله — سورة ' + SURAH_NAMES[n - 1] + ' ✦');
+}
+function hifzReviewed(n){
+  const h = qx().hifz; if(!h[n]) return;
+  h[n].rev = todayISO();
+  saveS(); hifzRenderTop();
+}
+function hifzToPlan(n){
+  if(!hifzInPlan(n)) hifzAddResp(n, 0);
+  saveS(); hifzRenderTop(); renderPlanLines();
+}
+
+/* ────────────────────────────────────────────────────
+   BUILD — styles, the home button, the reader page, the modals
+──────────────────────────────────────────────────── */
+(function(){
+  const st = document.createElement('style');
+  st.textContent = `
+    .quran-btn { position:absolute; bottom:15px; right:24px; z-index:20; width:28px; height:28px; padding:5px;
+      background:none; border:none; cursor:pointer; opacity:.78; pointer-events:all; transition:opacity .3s, transform .4s; }
+    .quran-btn:hover { opacity:1; transform:scale(1.15); }
+    .quran-btn svg { width:100%; height:100%; display:block; }
+    #page-quran { display:flex; flex-direction:column; background:rgba(2,4,14,.82); }
+    .q-top-actions { display:flex; gap:8px; align-items:center; flex-shrink:0; }
+    .q-body { flex:1; overflow-y:auto; position:relative; -webkit-overflow-scrolling:touch;
+      padding:22px clamp(18px,6vw,64px) 34px; --q-size:26px; }
+    .q-text { max-width:720px; margin:0 auto; font-family:'Scheherazade New','Amiri',serif;
+      font-size:var(--q-size); line-height:2.3; color:#EDE4C8; text-align:justify; text-align-last:center; direction:rtl; }
+    .q-text:empty { display:none; }
+    .q-num { color:rgba(200,165,80,.85); font-size:.7em; white-space:nowrap; }
+    .q-surah-head { max-width:720px; margin:20px auto 6px; text-align:center; font-size:calc(var(--q-size) * .88);
+      color:#F2E4B8; padding:7px 12px; border:1px solid rgba(200,165,80,.35); border-radius:14px;
+      background:rgba(200,165,80,.07); font-family:'Scheherazade New','Amiri',serif; }
+    .q-surah-head:first-child, .q-text:empty + .q-surah-head { margin-top:0; }
+    .q-basmala { text-align:center; font-size:var(--q-size); color:rgba(237,228,200,.9); margin:10px 0 2px;
+      line-height:2; font-family:'Scheherazade New','Amiri',serif; }
+    .q-msg { text-align:center; color:rgba(237,228,200,.45); font-size:15px; padding:60px 0; line-height:2.6; }
+    .q-foot { flex-shrink:0; background:rgba(3,6,20,.72); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+      border-top:1px solid rgba(255,255,255,.07);
+      padding:8px clamp(14px,4vw,40px) calc(10px + env(safe-area-inset-bottom)); }
+    .q-tools { display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .q-tool { font-size:12px; color:rgba(237,228,200,.5); border:1px solid rgba(255,255,255,.1);
+      padding:4px 12px; border-radius:11px; transition:all .2s; }
+    .q-tool:hover { color:#EDE4C8; border-color:rgba(255,255,255,.25); }
+    .q-tool.on { color:#F2E4B8; border-color:rgba(200,165,80,.5); background:rgba(200,165,80,.1); }
+    .q-spacer { flex:1; }
+    .q-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .q-nav-btn { font-size:15px; color:rgba(237,228,200,.78); border:1px solid rgba(255,255,255,.14);
+      padding:8px 18px; border-radius:14px; transition:all .2s; }
+    .q-nav-btn:hover:not(:disabled) { background:rgba(200,165,80,.12); border-color:rgba(200,165,80,.4); color:#EDE4C8; }
+    .q-nav-btn:disabled { opacity:.25; cursor:default; }
+    .q-page-num { font-size:13px; color:rgba(200,165,80,.78); letter-spacing:1px; padding:6px 10px; }
+    .q-sec-label { font-size:11px; color:rgba(237,228,200,.32); letter-spacing:1.5px; margin:10px 0 6px; text-align:right; }
+    .q-juz { display:grid; grid-template-columns:repeat(6,1fr); gap:5px; margin-bottom:14px; }
+    .q-juz-chip { font-size:14px; color:rgba(237,228,200,.65); border:1px solid rgba(255,255,255,.1);
+      border-radius:8px; padding:5px 0; transition:all .2s; }
+    .q-juz-chip:hover { color:#F2E4B8; border-color:rgba(200,165,80,.5); background:rgba(200,165,80,.1); }
+    .q-idx { font-size:12px; color:rgba(200,165,80,.6); min-width:26px; text-align:center; }
+    #q-search { width:100%; margin-bottom:10px; }
+    .q-ayah { cursor:pointer; border-radius:6px; transition:background .35s, color .35s; }
+    .q-ayah:hover { background:rgba(255,255,255,.04); }
+    .q-ayah.playing { background:rgba(200,165,80,.16); color:#F6ECC8; }
+    .q-ayah-quote { font-family:'Scheherazade New','Amiri',serif; font-size:22px; line-height:2.1; color:#EDE4C8;
+      padding:6px 4px 14px; text-align:center; }
+    .q-tafsir { font-family:'Scheherazade New','Amiri',serif; font-size:17px; line-height:2; color:rgba(237,228,200,.82);
+      text-align:right; direction:rtl; white-space:pre-wrap; background:rgba(237,228,200,.04);
+      border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:12px 14px; }
+    .q-tf-note { font-size:12px; color:rgba(200,165,80,.75); margin-bottom:8px; white-space:normal; }
+    .wird-line .tl-name { color:#F2E4B8; }
+    .q-fld { flex:1; text-align:right; }
+    .q-fld .mini-input { width:100%; }
+    .hz-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:9px 12px; margin-bottom:6px;
+      border:1px solid rgba(255,255,255,.09); border-radius:12px; text-align:right; }
+    .hz-row .swap-row-name { cursor:pointer; }
+    .hz-empty { font-size:13px; color:rgba(237,228,200,.35); font-style:italic; padding:6px 0 10px; text-align:center; line-height:1.8; }
+    .hz-chip { font-size:12px; padding:3px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
+      color:rgba(237,228,200,.3); transition:all .2s; }
+    .hz-chip.l { color:rgba(200,165,80,.9); border-color:rgba(200,165,80,.45); background:rgba(200,165,80,.09); }
+    .hz-chip.d { color:#A8E0BC; border-color:rgba(90,200,130,.4); background:rgba(90,200,130,.08); }
+  `;
+  document.head.appendChild(st);
+
+  /* home: the open-book button, first in the row of icons */
+  const sky = document.querySelector('#page-home .verse-sky');
+  if(sky) sky.insertAdjacentHTML('afterbegin', `
+    <button class="quran-btn" id="quran-btn" onclick="showPage('quran')" title="القرآن الكريم">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 6.2 C10 4.6 7 4.1 3.5 4.6 V18.4 C7 17.9 10 18.4 12 20 C14 18.4 17 17.9 20.5 18.4 V4.6 C17 4.1 14 4.6 12 6.2 Z M12 6.2 V20"
+              stroke="#C8A550" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/>
+      </svg>
+    </button>`);
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <!-- the reader page -->
+    <div class="page" id="page-quran">
+      <div class="trivia-topbar">
+        <div>
+          <div class="trivia-title">القرآن الكريم</div>
+          <div class="trivia-status" id="quran-status"></div>
+        </div>
+        <div class="q-top-actions">
+          <button class="resp-back-btn" onclick="quranOpenIndex()">الفهرس</button>
+          <button class="resp-back-btn" onclick="showPage('home')">← اليوم</button>
+        </div>
+      </div>
+      <div class="q-body" id="quran-body"></div>
+      <div class="q-foot">
+        <div class="q-tools">
+          <button class="q-tool" id="q-play" onclick="quranToggleAudio()"></button>
+          <button class="q-tool" id="q-reciter" onclick="quranCycleReciter()" title="اضغطي لتغيير القارئ"></button>
+          <button class="q-tool on" id="q-wird-done" onclick="wirdToggle()" style="display:none">✓ أتممتُ وِرد اليوم</button>
+          <span class="q-spacer"></span>
+          <button class="q-tool" id="q-wird-btn" onclick="wirdOpenSettings()">الوِرد</button>
+          <button class="q-tool" onclick="hifzOpenModal()">الحفظ</button>
+        </div>
+        <div class="q-tools">
+          <button class="q-tool" id="q-mark-set" onclick="quranSetMark()"></button>
+          <button class="q-tool" id="q-mark-go" onclick="quranGoMark()" style="display:none"></button>
+          <span class="q-spacer"></span>
+          <button class="q-tool" onclick="quranSize(-2)" title="تصغير الخط">أ−</button>
+          <button class="q-tool" onclick="quranSize(2)" title="تكبير الخط">أ+</button>
+        </div>
+        <div class="q-nav">
+          <button class="q-nav-btn" id="q-prev" onclick="quranStep(-1)">→ السابقة</button>
+          <button class="q-page-num" id="q-page-num" onclick="quranOpenIndex()" title="الفهرس / الانتقال إلى صفحة"></button>
+          <button class="q-nav-btn" id="q-next" onclick="quranStep(1)">التالية ←</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- index -->
+    <div class="mini-overlay" id="quran-index-overlay" onclick="if(event.target===this)quranCloseIndex()">
+      <div class="mini-modal swap-modal" onclick="event.stopPropagation()">
+        <div class="mini-label">الفهرس</div>
+        <div class="mini-custom-row">
+          <input type="number" class="mini-input" id="q-jump" min="1" max="604" placeholder="رقم الصفحة (١–٦٠٤)"
+                 onkeydown="if(event.key==='Enter')quranJump()">
+          <button class="mini-btn primary" onclick="quranJump()">اذهبي</button>
+        </div>
+        <div class="q-sec-label">الأجزاء</div>
+        <div class="q-juz" id="q-juz"></div>
+        <div class="q-sec-label">السور</div>
+        <input class="mini-input" id="q-search" placeholder="ابحثي عن سورة..." oninput="quranRenderSurahs()">
+        <div class="swap-list" id="q-surahs"></div>
+      </div>
+    </div>
+
+    <!-- āyah: tafsīr + listen from here -->
+    <div class="mini-overlay" id="q-ayah-overlay" onclick="if(event.target===this)quranCloseAyah()">
+      <div class="mini-modal swap-modal" style="max-width:560px" onclick="event.stopPropagation()">
+        <div class="mini-label" id="q-ayah-ref"></div>
+        <div class="q-ayah-quote" id="q-ayah-quote"></div>
+        <div class="mini-btn-row">
+          <button class="mini-btn primary" onclick="quranCloseAyah();quranPlayFrom(_qTapNum)">▶ استمعي من هنا</button>
+          <button class="mini-btn" onclick="quranCloseAyah()">إغلاق</button>
+        </div>
+        <div class="q-sec-label" style="margin-top:16px">تفسير السعدي</div>
+        <div class="q-tafsir" id="q-tafsir"></div>
+      </div>
+    </div>
+
+    <!-- wird settings -->
+    <div class="mini-overlay" id="q-wird-overlay" onclick="if(event.target===this)wirdClose()">
+      <div class="mini-modal" onclick="event.stopPropagation()">
+        <div class="mini-label">وِرد القرآن</div>
+        <div class="mini-title">كم صفحةً في اليوم؟</div>
+        <div class="mini-sub">يظهر الوِرد سطرًا في أول خطة اليوم، ولا يُحسب من ساعات طاقتك. ضعي ٠ لإيقافه.</div>
+        <div class="mini-custom-row">
+          <div class="q-fld"><div class="q-sec-label">صفحات كل يوم</div>
+            <input type="number" class="mini-input" id="wird-pages" min="0" max="60" oninput="wirdPreview()"></div>
+          <div class="q-fld"><div class="q-sec-label">الوِرد القادم يبدأ من صفحة</div>
+            <input type="number" class="mini-input" id="wird-pos" min="1" max="604" oninput="wirdPreview()"></div>
+        </div>
+        <div class="q-sec-label" id="wird-preview" style="text-align:center;margin-bottom:12px"></div>
+        <div class="mini-btn-row">
+          <button class="mini-btn primary" onclick="wirdSave()">حفظ</button>
+          <button class="mini-btn" onclick="wirdHere()">من الصفحة الحالية</button>
+          <button class="mini-btn" onclick="wirdClose()">إغلاق</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ḥifẓ & murājaʿa -->
+    <div class="mini-overlay" id="q-hifz-overlay" onclick="if(event.target===this)hifzCloseModal()">
+      <div class="mini-modal swap-modal" style="max-width:520px" onclick="event.stopPropagation()">
+        <div class="mini-label">الحفظ والمراجعة</div>
+        <div id="hz-top"></div>
+        <div class="q-sec-label" style="margin-top:14px">كل السور — اضغطي الحالة لتغييرها</div>
+        <input class="mini-input" id="hz-search" style="width:100%;margin-bottom:10px"
+               placeholder="ابحثي عن سورة..." oninput="hifzRenderList()">
+        <div id="hz-list"></div>
+        <div class="mini-btn-row" style="margin-top:12px">
+          <button class="mini-btn" onclick="hifzCloseModal()">إغلاق</button>
+        </div>
+      </div>
+    </div>`);
+
+  /* swipe to turn the page — like a real muṣḥaf: drag right → next */
+  const body = document.getElementById('quran-body');
+  let x0 = null, y0 = null;
+  body.addEventListener('touchstart', e => {
+    if(e.touches.length === 1){ x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }
+  }, { passive:true });
+  body.addEventListener('touchend', e => {
+    if(x0 == null) return;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if(Math.abs(dx) > 70 && Math.abs(dy) < 45) quranStep(dx > 0 ? 1 : -1);
+  }, { passive:true });
+
+  /* keyboard: ← next page, → previous, Esc closes whatever is open */
+  document.addEventListener('keydown', e => {
+    const open = id => document.getElementById(id).classList.contains('open');
+    const anyOpen = open('quran-index-overlay') || open('q-ayah-overlay') || open('q-wird-overlay') || open('q-hifz-overlay');
+    if(e.key === 'Escape'){ quranCloseIndex(); quranCloseAyah(); wirdClose(); hifzCloseModal(); return; }
+    if(S.page !== 'quran' || anyOpen) return;
+    if(e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if(e.key === 'ArrowLeft')  quranStep(1);
+    if(e.key === 'ArrowRight') quranStep(-1);
+  });
+})();
+
+/* ────────────────────────────────────────────────────
+   WIRING — hooks into the planner
+──────────────────────────────────────────────────── */
+/* page switching: show the reader; leaving it stops the recitation */
+const _qOrigShowPage = showPage;
+showPage = function(name){
+  if(name !== 'quran') quranStop();
+  _qOrigShowPage(name);
+  document.getElementById('page-quran').classList.toggle('visible', name === 'quran');
+  if(name === 'quran') quranOpen();
+};
+
+/* home plan: the wird line */
+const _qOrigRenderPlan = renderPlanLines;
+renderPlanLines = function(){ _qOrigRenderPlan(); wirdRenderLine(); };
+
+/* finishing a "مراجعة سورة …" responsibility stamps the review date */
+const _qOrigFinish = finishTask;
+finishTask = function(id, est, act){
+  const r = S.responsibilities.find(x => x.id === id);
+  const hs = r && r.hifzSurah;
+  _qOrigFinish(id, est, act);
+  if(hs && qx().hifz[hs]){ qx().hifz[hs].rev = todayISO(); saveS(); }
+};
+
+/* if the app was closed while reading, start on the home page —
+   the reader remembers the page and reopens exactly there */
+if(S.page === 'quran'){ S.page = 'home'; saveS(); }
+
+quranAudioUI();
+quranFoot();
+renderPlanLines();
 </script>
 </body>
 </html>
